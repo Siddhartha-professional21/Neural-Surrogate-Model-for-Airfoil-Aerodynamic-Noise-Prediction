@@ -1,0 +1,108 @@
+
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+
+  data-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install packages
+        run: pip install -r requirements.txt pytest httpx
+
+      - name: Run the data validation tests
+        run: python -m pytest test_data.py -v
+
+  model-testing:
+    runs-on: ubuntu-latest
+    needs: data-validation
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install packages
+        run: pip install -r requirements.txt pytest httpx
+
+      - name: Run the model tests
+        run: python -m pytest test_model.py -v
+
+  api-testing:
+    runs-on: ubuntu-latest
+    needs: model-testing
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install packages
+        run: pip install -r requirements.txt pytest httpx
+
+      - name: Run the API tests
+        run: python -m pytest test_api.py -v
+
+  docker-and-deploy:
+    runs-on: ubuntu-latest
+    needs: [model-testing, api-testing]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Build the Docker image
+        run: docker build -t airfoil-api .
+
+      - name: Start the container
+        run: |
+          docker run -d --name api -p 8000:8000 airfoil-api
+          sleep 40
+          docker logs api
+
+      - name: Check the health endpoint
+        run: curl -sf http://localhost:8000/health
+
+      - name: Send a real input to the container
+        run: |
+          pip install requests
+          python check_container.py
+
+      - name: Stop the container
+        if: always()
+        run: docker rm -f api
+
+      - name: Push the image to GitHub Container Registry
+        if: github.ref == 'refs/heads/main'
+        run: |
+          IMAGE=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker tag airfoil-api $IMAGE:latest
+          docker push $IMAGE:latest

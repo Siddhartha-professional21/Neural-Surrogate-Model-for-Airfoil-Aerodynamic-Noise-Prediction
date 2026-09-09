@@ -1,0 +1,11 @@
+{
+  "readings": {
+    "frequency": 400.0,
+    "angle_of_attack": 0.0,
+    "chord_length": 0.3048,
+    "velocity": 31.7,
+    "displacement_thickness": 0.00331266
+  },
+  "true_sound_pressure": 125.045,
+  "expected_prediction": 124.60955810546875
+}
